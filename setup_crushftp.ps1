@@ -46,4 +46,67 @@ try {
     exit 1
 }
 
-Write-Host "Setup completed successfully!"
+Write-Host "Setting up Windows Firewall rules for CrushFTP..."
+try {
+    $crushftpExe = Join-Path $extractPath "CrushFTP11\CrushFTP.exe"
+    
+    # Define the ports we need to open
+    $ports = @(
+        @{Port = 21; Protocol = "TCP"; Description = "FTP"},
+        @{Port = 22; Protocol = "TCP"; Description = "SFTP"},
+        @{Port = 80; Protocol = "TCP"; Description = "HTTP"},
+        @{Port = 443; Protocol = "TCP"; Description = "HTTPS"},
+        @{Port = 8080; Protocol = "TCP"; Description = "HTTP Alt"},
+        @{Port = 9090; Protocol = "TCP"; Description = "HTTPS Alt"},
+        # Passive FTP port range
+        @{Port = "20000-20100"; Protocol = "TCP"; Description = "Passive FTP"}
+    )
+
+    # Create firewall rules for each port
+    foreach ($port in $ports) {
+        $ruleName = "CrushFTP11_$($port.Description)_$($port.Port)"
+        
+        # Remove existing rule if it exists
+        Remove-NetFirewallRule -Name $ruleName -ErrorAction SilentlyContinue
+        
+        # Create new rule
+        New-NetFirewallRule -Name $ruleName `
+            -DisplayName "CrushFTP 11 $($port.Description) - Port $($port.Port)" `
+            -Direction Inbound `
+            -Protocol $port.Protocol `
+            -LocalPort $port.Port `
+            -Action Allow `
+            -Program $crushftpExe `
+            -Enabled True
+    }
+    
+    Write-Host "Firewall rules created successfully"
+
+} catch {
+    Write-Error "Failed to create firewall rules: $_"
+    exit 1
+}
+
+Write-Host "Starting CrushFTP in daemon mode..."
+try {
+    $crushftpExe = Join-Path $extractPath "CrushFTP11\CrushFTP.exe"
+    
+    # Start CrushFTP in daemon mode
+    $process = Start-Process -FilePath $crushftpExe -ArgumentList '-d' -PassThru -NoNewWindow
+    
+    # Give it a moment to start
+    Start-Sleep -Seconds 5
+    
+    if ($process.HasExited) {
+        Write-Error "CrushFTP daemon failed to start"
+        exit 1
+    }
+    
+    Write-Host "CrushFTP daemon started successfully"
+
+} catch {
+    Write-Error "Failed to start CrushFTP daemon: $_"
+    exit 1
+}
+
+Write-Host "Setup completed successfully! CrushFTP is now running in daemon mode."
