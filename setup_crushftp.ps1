@@ -46,44 +46,25 @@ try {
     exit 1
 }
 
-Write-Host "Setting up Windows Firewall rules for CrushFTP..."
+Write-Host "Setting up Windows Firewall rule for CrushFTP..."
 try {
     $crushftpExe = Join-Path $extractPath "CrushFTP11\CrushFTP.exe"
     
-    # Define the ports we need to open
-    $ports = @(
-        @{Port = 21; Protocol = "TCP"; Description = "FTP"},
-        @{Port = 22; Protocol = "TCP"; Description = "SFTP"},
-        @{Port = 80; Protocol = "TCP"; Description = "HTTP"},
-        @{Port = 443; Protocol = "TCP"; Description = "HTTPS"},
-        @{Port = 8080; Protocol = "TCP"; Description = "HTTP Alt"},
-        @{Port = 9090; Protocol = "TCP"; Description = "HTTPS Alt"},
-        # Passive FTP port range
-        @{Port = "20000-20100"; Protocol = "TCP"; Description = "Passive FTP"}
-    )
-
-    # Create firewall rules for each port
-    foreach ($port in $ports) {
-        $ruleName = "CrushFTP11_$($port.Description)_$($port.Port)"
-        
-        # Remove existing rule if it exists
-        Remove-NetFirewallRule -Name $ruleName -ErrorAction SilentlyContinue
-        
-        # Create new rule
-        New-NetFirewallRule -Name $ruleName `
-            -DisplayName "CrushFTP 11 $($port.Description) - Port $($port.Port)" `
-            -Direction Inbound `
-            -Protocol $port.Protocol `
-            -LocalPort $port.Port `
-            -Action Allow `
-            -Program $crushftpExe `
-            -Enabled True
-    }
+    # Remove existing rule if it exists
+    Remove-NetFirewallRule -Name "CrushFTP11_Program" -ErrorAction SilentlyContinue
     
-    Write-Host "Firewall rules created successfully"
+    # Create new rule for the program
+    New-NetFirewallRule -Name "CrushFTP11_Program" `
+        -DisplayName "CrushFTP 11" `
+        -Direction Inbound `
+        -Action Allow `
+        -Program $crushftpExe `
+        -Enabled True
+    
+    Write-Host "Firewall rule created successfully"
 
 } catch {
-    Write-Error "Failed to create firewall rules: $_"
+    Write-Error "Failed to create firewall rule: $_"
     exit 1
 }
 
