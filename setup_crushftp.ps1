@@ -27,20 +27,15 @@ try {
 Write-Host "Setting up CrushFTP admin user..."
 try {
     $crushftpExe = Join-Path $extractPath "CrushFTP11\CrushFTP.exe"
-    $process = Start-Process -FilePath $crushftpExe -ArgumentList '-a', 'crushadmin', 'password' -PassThru -NoNewWindow
+    $process = Start-Process -FilePath $crushftpExe -ArgumentList '-a', 'crushadmin', 'password' -PassThru -NoNewWindow -Wait
     
-    # Wait for the process to complete or timeout after 30 seconds
-    if (-not $process.WaitForExit(30000)) {
-        Write-Host "Process is taking too long, terminating..."
-        $process.Kill()
-    }
-    
-    if ($process.ExitCode -ne 0) {
+    # Check if the process completed successfully (exit code 0)
+    if ($process.ExitCode -eq 0) {
+        Write-Host "CrushFTP admin user setup completed successfully"
+    } else {
         Write-Error "CrushFTP setup failed with exit code: $($process.ExitCode)"
         exit 1
     }
-    
-    Write-Host "CrushFTP admin user setup completed successfully"
 } catch {
     Write-Error "Failed to setup CrushFTP admin user: $_"
     exit 1
@@ -68,26 +63,38 @@ try {
     exit 1
 }
 
-Write-Host "Starting CrushFTP in daemon mode..."
+Write-Host "Installing CrushFTP as a Windows Service..."
 try {
     $crushftpExe = Join-Path $extractPath "CrushFTP11\CrushFTP.exe"
+
+    $serviceName = "CrushFTP"
     
-    # Start CrushFTP in daemon mode
-    $process = Start-Process -FilePath $crushftpExe -ArgumentList '-d' -PassThru -NoNewWindow
-    
-    # Give it a moment to start
-    Start-Sleep -Seconds 5
-    
-    if ($process.HasExited) {
-        Write-Error "CrushFTP daemon failed to start"
-        exit 1
+    # First, stop and remove any existing CrushFTP service
+    if (Get-Service -Name $serviceName -ErrorAction SilentlyContinue) {
+        Stop-Service -Name $serviceName -Force -ErrorAction SilentlyContinue
+        sc.exe delete $serviceName
+        Write-Host "Removed existing CrushFTP service"
     }
     
-    Write-Host "CrushFTP daemon started successfully"
+    # Create the service using sc.exe
+    $binPath = "`"$crushftpExe`" -d" # TODO - Fix this startup command otherwise might just have to have a separate process check and keep the daemon online without windows service
+    sc.exe create $serviceName displayname= "CrushFTP Server" start= auto binpath= $binPath
+    if ($LASTEXITCODE -ne 0) {
+        Write-Error "Failed to create CrushFTP service. Exit code: $LASTEXITCODE"
+        exit 1
+    }
+    Write-Host "CrushFTP service created successfully"
+
+    # Set the service description
+    sc.exe description $serviceName "CrushFTP File Transfer Server running in daemon mode"
+    
+    # Start the service
+    Start-Service -Name $serviceName
+    Write-Host "CrushFTP service started successfully"
 
 } catch {
-    Write-Error "Failed to start CrushFTP daemon: $_"
+    Write-Error "Failed to setup CrushFTP service: $_"
     exit 1
 }
 
-Write-Host "Setup completed successfully! CrushFTP is now running in daemon mode."
+Write-Host "Setup completed successfully! CrushFTP is now running as a Windows service."
