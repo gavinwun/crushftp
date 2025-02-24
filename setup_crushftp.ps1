@@ -63,38 +63,35 @@ try {
     exit 1
 }
 
-Write-Host "Installing CrushFTP as a Windows Service..."
+Write-Host "Setting up CrushFTP monitor..."
 try {
     $crushftpExe = Join-Path $extractPath "CrushFTP11\CrushFTP.exe"
+    $monitorScript = Join-Path $PSScriptRoot "monitor_crushftp.ps1"
+    
+    # Remove existing scheduled task if it exists
+    Unregister-ScheduledTask -TaskName "CrushFTP_Monitor" -Confirm:$false -ErrorAction SilentlyContinue
+    Write-Host "Removed existing scheduled task"
+    
+    # Create a new scheduled task
+    $action = New-ScheduledTaskAction -Execute "powershell.exe" -Argument "-NoProfile -ExecutionPolicy Bypass -File `"$monitorScript`""
+    $trigger = New-ScheduledTaskTrigger -AtStartup
+    $principal = New-ScheduledTaskPrincipal -UserId "SYSTEM" -LogonType ServiceAccount -RunLevel Highest
+    $settings = New-ScheduledTaskSettingsSet -MultipleInstances IgnoreNew -RestartCount 3 -RestartInterval (New-TimeSpan -Minutes 1)
+    
+    Register-ScheduledTask -TaskName "CrushFTP_Monitor" `
+                         -Action $action `
+                         -Trigger $trigger `
+                         -Principal $principal `
+                         -Settings $settings `
+                         -Description "Monitors and maintains CrushFTP daemon process"
+    
+    Write-Host "Scheduled task created successfully"
 
-    $serviceName = "CrushFTP"
-    
-    # First, stop and remove any existing CrushFTP service
-    if (Get-Service -Name $serviceName -ErrorAction SilentlyContinue) {
-        Stop-Service -Name $serviceName -Force -ErrorAction SilentlyContinue
-        sc.exe delete $serviceName
-        Write-Host "Removed existing CrushFTP service"
-    }
-    
-    # Create the service using sc.exe
-    $binPath = "`"$crushftpExe`" -d" # TODO - Fix this startup command otherwise might just have to have a separate process check and keep the daemon online without windows service
-    sc.exe create $serviceName displayname= "CrushFTP Server" start= auto binpath= $binPath
-    if ($LASTEXITCODE -ne 0) {
-        Write-Error "Failed to create CrushFTP service. Exit code: $LASTEXITCODE"
-        exit 1
-    }
-    Write-Host "CrushFTP service created successfully"
-
-    # Set the service description
-    sc.exe description $serviceName "CrushFTP File Transfer Server running in daemon mode"
-    
-    # Start the service
-    Start-Service -Name $serviceName
-    Write-Host "CrushFTP service started successfully"
+    Start-ScheduledTask -TaskName "CrushFTP_Monitor"
 
 } catch {
-    Write-Error "Failed to setup CrushFTP service: $_"
+    Write-Error "Failed to setup CrushFTP monitor: $_"
     exit 1
 }
 
-Write-Host "Setup completed successfully! CrushFTP is now running as a Windows service."
+Write-Host "Setup completed successfully! CrushFTP is now running with monitoring enabled."
